@@ -1,11 +1,13 @@
 from fuse import FUSE, FuseOSError, Operations
 import os, sys, errno, time, stat
+from collections import defaultdict
 
 class MemoryVFS(Operations):
     def __init__(self):
         self.files = {}
         self.data = {}
         self.fd = 0
+        self.links = defaultdict(list)
         now = time.time()
         self.files['/'] = dict(
             st_mode=(stat.S_IFDIR | 0o755),
@@ -75,6 +77,24 @@ class MemoryVFS(Operations):
     def unlink(self, path):
         self.files.pop(path)
         self.data.pop(path, None)
+
+    def rename(self, old, new):
+        self.files[new] = self.files.pop(old)
+        if old in self.data:
+            self.data[new] = self.data.pop(old)
+
+    def chmod(self, path, mode):
+        self.files[path]['st_mode'] &= 0o770000
+        self.files[path]['st_mode'] |= mode
+        return 0
+
+    def chown(self, path, uid, gid):
+        self.files[path]['st_uid'] = uid
+        self.files[path]['st_gid'] = gid
+
+    def truncate(self, path, length):
+        self.data[path] = self.data[path][:length].ljust(length, b'\x00')
+        self.files[path]['st_size'] = length
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
